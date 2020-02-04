@@ -25,6 +25,7 @@
 #include <string>
 
 #include "PointSet.h"
+#include <nappe_tracking_msgs/TrackingResult.h>
 
 #define FRAME_BASE 30
 #define DESTINATION_RATE 15
@@ -32,6 +33,8 @@
 #define OUTPUT_DEBUG_INFO false
 #define POINTS_PER_ROW 3
 #define POINTS_PER_COL 10
+#define ROW_POINTSET 10
+#define COL_POINTSET 3
 /* 1 - Voxel filtering result
  * 2 - Color filtering result
  *
@@ -47,6 +50,7 @@
 
 ros::Publisher gen_set_pub;
 ros::Publisher cloud_pub;
+ros::Publisher post_result_pub;
 ros::Publisher marker_pub_line;
 ros::Publisher marker_pub_text;
 
@@ -299,7 +303,23 @@ void nappe_tracking_post(const sensor_msgs::PointCloud2ConstPtr & input)
 		output.header.frame_id = "camera_rgb_optical_frame";
 		cloud_pub.publish(output);
 
-    // Publish CPD result
+		// Publish CPD result for mc_rtc
+		nappe_tracking_msgs::TrackingResult pubTrackingResultMsg;
+		pubTrackingResultMsg.row = ROW_POINTSET;
+		pubTrackingResultMsg.col = COL_POINTSET; 
+		pubTrackingResultMsg.data.resize(POINTS_PER_ROW * POINTS_PER_COL);
+		for (size_t i = 0; i < POINTS_PER_ROW * POINTS_PER_COL; i++)
+		{
+			//for (size_t j = 0; j < COL_POINTSET; j++)
+			//{
+				pubTrackingResultMsg.data[i].x = 0.1; 
+				pubTrackingResultMsg.data[i].y = 0.2; 
+				pubTrackingResultMsg.data[i].z = 0.3; 
+			//}
+		}
+		post_result_pub.publish(pubTrackingResultMsg);
+
+    // Publish CPD result as marker
     displayCloud = ptrResultCPD;
     pcl::toROSMsg(*displayCloud, output);
 		output.header.stamp = ros::Time::now();
@@ -318,7 +338,6 @@ void nappe_tracking_post(const sensor_msgs::PointCloud2ConstPtr & input)
     line_list.scale.x = 0.004;
     line_list.color.r = 1.0;
     line_list.color.a = 1.0;
-		//line_list.text="xxx";
     geometry_msgs::Point p;
     for (size_t i = 0; i < POINTS_PER_ROW; i++)
     {
@@ -391,10 +410,11 @@ int main(int argc, char * argv[])
 
 	// Create ROS subscriber & publisher 
 	ros::Subscriber sub = nh.subscribe("input", 1, nappe_tracking_post);
-	gen_set_pub = nh.advertise<sensor_msgs::PointCloud2>("/nappe/registration", 1);
 	cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/nappe/filter/color", 1);
+	post_result_pub = nh.advertise<nappe_tracking_msgs::TrackingResult>("/nappe/registration", 1);
   marker_pub_line = nh.advertise<visualization_msgs::Marker>("/nappe/marker/grid", 10);
   marker_pub_text = nh.advertise<visualization_msgs::Marker>("/nappe/marker/text", 10);
+	gen_set_pub = nh.advertise<sensor_msgs::PointCloud2>("/nappe/marker/result", 1);
 
 	// Spin
 	ros::spin();

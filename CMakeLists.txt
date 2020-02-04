@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   pcl_ros
   sensor_msgs
+	nappe_tracking_msgs
 )
 
 find_package(Cpd REQUIRED)
