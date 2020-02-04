@@ -47,7 +47,8 @@
 
 ros::Publisher gen_set_pub;
 ros::Publisher cloud_pub;
-ros::Publisher marker_pub;
+ros::Publisher marker_pub_line;
+ros::Publisher marker_pub_text;
 
 int cntRun = 0;
 
@@ -317,6 +318,7 @@ void nappe_tracking_post(const sensor_msgs::PointCloud2ConstPtr & input)
     line_list.scale.x = 0.004;
     line_list.color.r = 1.0;
     line_list.color.a = 1.0;
+		//line_list.text="xxx";
     geometry_msgs::Point p;
     for (size_t i = 0; i < POINTS_PER_ROW; i++)
     {
@@ -348,7 +350,30 @@ void nappe_tracking_post(const sensor_msgs::PointCloud2ConstPtr & input)
         line_list.points.push_back(p);
       }
     }
-    marker_pub.publish(line_list);
+    marker_pub_line.publish(line_list);
+
+		// Generate text markers and publish them
+    visualization_msgs::Marker text_list;
+    text_list.header.frame_id = "camera_rgb_optical_frame";
+    text_list.header.stamp = ros::Time::now();
+    text_list.ns = "basic_shapes";
+    text_list.action = visualization_msgs::Marker::ADD;
+    //text_list.pose.orientation.w = 1.0;
+    text_list.id = 100;
+    text_list.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+		text_list.pose.position.x = 0.0;
+		text_list.pose.position.y = 0.0;
+		text_list.pose.position.z = 0.0;
+    text_list.scale.x = 1.0;
+    text_list.scale.y = 1.0;
+    text_list.scale.z = 1.0;
+		text_list.color.r = 1.0;
+		text_list.color.g = 0.0;
+		text_list.color.b = 0.0;
+		text_list.text="bababa";
+    
+    marker_pub_text.publish(text_list);
+
 	}
 }
 
@@ -366,9 +391,10 @@ int main(int argc, char * argv[])
 
 	// Create ROS subscriber & publisher 
 	ros::Subscriber sub = nh.subscribe("input", 1, nappe_tracking_post);
-	gen_set_pub = nh.advertise<sensor_msgs::PointCloud2>("nappe_tracking_result", 1);
-	cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("nappe_tracking_post", 1);
-  marker_pub = nh.advertise<visualization_msgs::Marker>("grid", 10);
+	gen_set_pub = nh.advertise<sensor_msgs::PointCloud2>("/nappe/registration", 1);
+	cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/nappe/filter/color", 1);
+  marker_pub_line = nh.advertise<visualization_msgs::Marker>("/nappe/marker/grid", 10);
+  marker_pub_text = nh.advertise<visualization_msgs::Marker>("/nappe/marker/text", 10);
 
 	// Spin
 	ros::spin();
