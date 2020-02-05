@@ -26,6 +26,7 @@
 
 #include "PointSet.h"
 #include <nappe_tracking_msgs/TrackingResult.h>
+#include <nappe_tracking_msgs/TrackingCmd.h>
 
 #define FRAME_BASE 30
 #define DESTINATION_RATE 15
@@ -251,7 +252,7 @@ pcl::PointCloud<pcl::PointXYZRGB> * cpd_matching(pcl::PointCloud<pcl::PointXYZRG
 }
 
 /** Tracking the surface of the deformable object. */
-void nappe_tracking_post(const sensor_msgs::PointCloud2ConstPtr & input)
+void nappeTrackingPostCallback(const sensor_msgs::PointCloud2ConstPtr & input)
 
 {
   
@@ -310,13 +311,15 @@ void nappe_tracking_post(const sensor_msgs::PointCloud2ConstPtr & input)
 		pubTrackingResultMsg.data.resize(POINTS_PER_ROW * POINTS_PER_COL);
 		for (size_t i = 0; i < POINTS_PER_ROW * POINTS_PER_COL; i++)
 		{
-			//for (size_t j = 0; j < COL_POINTSET; j++)
-			//{
-				pubTrackingResultMsg.data[i].x = 0.1; 
-				pubTrackingResultMsg.data[i].y = 0.2; 
-				pubTrackingResultMsg.data[i].z = 0.3; 
-			//}
+			//pubTrackingResultMsg.data[i].x = 0.1; 
+			//pubTrackingResultMsg.data[i].y = 0.2; 
+			//pubTrackingResultMsg.data[i].z = 0.3; 
+			pubTrackingResultMsg.data[i].x = ptrResultCPD->points[i].x; 
+			pubTrackingResultMsg.data[i].y = ptrResultCPD->points[i].y; 
+			pubTrackingResultMsg.data[i].z = ptrResultCPD->points[i].z; 
+
 		}
+
 		post_result_pub.publish(pubTrackingResultMsg);
 
     // Publish CPD result as marker
@@ -396,6 +399,19 @@ void nappe_tracking_post(const sensor_msgs::PointCloud2ConstPtr & input)
 	}
 }
 
+/** Process the command from nappe controller. */
+void visionCmdCallback(const nappe_tracking_msgs::TrackingCmd & msg)
+{
+	std::cout << "visionCmdCallback  ..." << std::endl;
+
+	if (msg.cmd == 1)
+		std::cout << "Start the vision ..." << std::endl;
+	else if (msg.cmd == 2)
+		std::cout << "Finish the vision ..." << std::endl;
+	else
+		;
+}
+
 int main(int argc, char * argv[])
 {
 
@@ -409,7 +425,9 @@ int main(int argc, char * argv[])
 	ros::NodeHandle nh;
 
 	// Create ROS subscriber & publisher 
-	ros::Subscriber sub = nh.subscribe("input", 1, nappe_tracking_post);
+	ros::Subscriber tracking_pre_sub = nh.subscribe("/nappe/filter/voxel", 1, nappeTrackingPostCallback);
+	ros::Subscriber controller_sub = nh.subscribe("/nappe/vision_cmd", 1, visionCmdCallback);
+
 	cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/nappe/filter/color", 1);
 	post_result_pub = nh.advertise<nappe_tracking_msgs::TrackingResult>("/nappe/registration", 1);
   marker_pub_line = nh.advertise<visualization_msgs::Marker>("/nappe/marker/grid", 10);
