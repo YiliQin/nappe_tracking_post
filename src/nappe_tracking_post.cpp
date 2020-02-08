@@ -25,8 +25,8 @@
 #include <string>
 
 #include "PointSet.h"
-#include <nappe_tracking_msgs/TrackingResult.h>
-#include <nappe_tracking_msgs/TrackingCmd.h>
+#include <nappe_tracking_msgs/TrackResult.h>
+#include <nappe_tracking_msgs/TrackPostConfig.h>
 
 #define FRAME_BASE 30
 #define DESTINATION_RATE 15
@@ -34,27 +34,21 @@
 #define OUTPUT_DEBUG_INFO false
 #define POINTS_PER_ROW 3
 #define POINTS_PER_COL 10
-#define ROW_POINTSET 10
-#define COL_POINTSET 3
-/* 1 - Voxel filtering result
- * 2 - Color filtering result
- *
- */
-#define DISPLAY_SELECT 2
-
-/* 1 - HSV filter
- * 2 - RGB filter
- *
- */
-#define COLOR_FILTER_SEL 1
+#define ROWS_POINTSET 10
+#define COLS_POINTSET 3
 #define TRACK_START 20
 #define TRACK_FINISH 30
 
-ros::Publisher gen_set_pub;
-ros::Publisher cloud_pub;
-ros::Publisher post_result_pub;
+/** 1 - HSV filter
+ *  2 - RGB filter */
+#define COLOR_FILTER_SEL 1
+
+ros::Publisher color_filter_pub;
+ros::Publisher pointset_pub;
+ros::Publisher match_result_pub;
+//ros::Publisher marker_pub_point;
 ros::Publisher marker_pub_line;
-ros::Publisher marker_pub_text;
+//ros::Publisher marker_pub_text;
 
 int cntRun = 0;
 bool trackRun = false;
@@ -104,9 +98,15 @@ pcl::PointCloud<pcl::PointXYZRGB> * colorHSV_filter(pcl::PointCloud<pcl::PointXY
 		p.z = cloud.points[i].z;
 		if (OUTPUT_DEBUG_INFO == true)
 			std::cout << "HSV: h=" << p.h << "; s=" << p.s << "; v=" << p.v << std::endl;
+		// nappe in bobbin
+		//if (((0 <= p.h && p.h <= 30) || (320 <= p.h && p.h <= 360)) &&
+					//(0.45 <= p.s && p.s <= 0.99) &&
+						//(0.23 <= p.v && p.v <= 0.4))
+		// nappe pick up
 		if (((0 <= p.h && p.h <= 30) || (320 <= p.h && p.h <= 360)) &&
-					(0.45 <= p.s && p.s <= 0.99) &&
-						(0.23 <= p.v && p.v <= 0.4))
+					(0.5 <= p.s && p.s <= 1.0) &&
+						(0.08 <= p.v && p.v <= 0.45))
+		//if (0 <= p.h && p.h <= 20)
 		{
 			ptrCloudHSV->push_back(p);
 		}
@@ -262,7 +262,7 @@ void nappeTrackingPostCallback(const sensor_msgs::PointCloud2ConstPtr & input)
 		cntRun++;
 
 		if (OUTPUT_DEBUG_INFO == true)
-			std::cout << "Tracking ... " << cntRun << std::endl;
+			std::cout << "Callback running ... " << cntRun << std::endl;
 
 		if (cntRun == FRAME_BASE / DESTINATION_RATE)
 		{
@@ -272,84 +272,90 @@ void nappeTrackingPostCallback(const sensor_msgs::PointCloud2ConstPtr & input)
 			pcl::PointCloud<pcl::PointXYZRGB> * ptrCloudRGB = new pcl::PointCloud<pcl::PointXYZRGB>;
 			pcl::fromROSMsg(*input, *ptrCloudRGB);
 
-			//// Voxel filter
-			//pcl::PointCloud<pcl::PointXYZRGB> * ptrVoxelFilter = new pcl::PointCloud<pcl::PointXYZRGB>;
-			//ptrVoxelFilter = voxel_filter(*ptrCloudRGB);
-
 			// Color filter
 			pcl::PointCloud<pcl::PointXYZRGB> * ptrColorFilter = new (pcl::PointCloud<pcl::PointXYZRGB>);
 			switch (COLOR_FILTER_SEL)
 			{
-				//case 1:	ptrColorFilter = colorHSV_filter(*ptrVoxelFilter); break;
-				//case 2: ptrColorFilter = colorRGB_filter(*ptrVoxelFilter); break;
 				case 1:	ptrColorFilter = colorHSV_filter(*ptrCloudRGB); break;
 				case 2: ptrColorFilter = colorRGB_filter(*ptrCloudRGB); break;
 				default: break;
 			}
-			
+
+			// pcl::PCLPointCloud2 -> pcl::PointCloud<T>
+			sensor_msgs::PointCloud2 output;
+
+			// Publish color filter result 
+			pcl::toROSMsg(*ptrColorFilter, output);
+			output.header.stamp = ros::Time::now();
+			output.header.frame_id = "camera_depth_optical_frame";
+			color_filter_pub.publish(output);
+
 			// CPD matching
 			pcl::PointCloud<pcl::PointXYZRGB> * ptrResultCPD = new (pcl::PointCloud<pcl::PointXYZRGB>);
 			ptrResultCPD = cpd_matching(*ptrColorFilter);
-			
-			// Convert pcl::PCLPointCloud2 to pcl::PointCloud<T>
-			pcl::PointCloud<pcl::PointXYZRGB> * displayCloud = new (pcl::PointCloud<pcl::PointXYZRGB>);
-			sensor_msgs::PointCloud2 output;
 
-			// Publish cloud
-			switch (DISPLAY_SELECT)
-			{
-				//case 1: displayCloud = ptrVoxelFilter; break;
-				case 1: displayCloud = ptrCloudRGB; break;
-				case 2: displayCloud = ptrColorFilter; break;
-				default: break;
-			}
-			pcl::toROSMsg(*displayCloud, output);
+			// Publish CPD match result for rviz
+			pcl::toROSMsg(*ptrResultCPD, output);
 			output.header.stamp = ros::Time::now();
-			output.header.frame_id = "camera_rgb_optical_frame";
-			cloud_pub.publish(output);
+			output.header.frame_id = "camera_depth_optical_frame";
+			pointset_pub.publish(output);
 
-			// Publish CPD result for mc_rtc
-			nappe_tracking_msgs::TrackingResult pubTrackingResultMsg;
-			pubTrackingResultMsg.row = ROW_POINTSET;
-			pubTrackingResultMsg.col = COL_POINTSET; 
-			pubTrackingResultMsg.data.resize(POINTS_PER_ROW * POINTS_PER_COL);
+			// Publish CPD match result for mc_rtc
+			nappe_tracking_msgs::TrackResult pubTrackResultMsg;
+			pubTrackResultMsg.row = ROWS_POINTSET;
+			pubTrackResultMsg.col = COLS_POINTSET; 
+			pubTrackResultMsg.data.resize(POINTS_PER_ROW * POINTS_PER_COL);
 			for (size_t i = 0; i < POINTS_PER_ROW * POINTS_PER_COL; i++)
 			{
-				//pubTrackingResultMsg.data[i].x = 0.1; 
-				//pubTrackingResultMsg.data[i].y = 0.2; 
-				//pubTrackingResultMsg.data[i].z = 0.3; 
-				pubTrackingResultMsg.data[i].x = ptrResultCPD->points[i].x; 
-				pubTrackingResultMsg.data[i].y = ptrResultCPD->points[i].y; 
-				pubTrackingResultMsg.data[i].z = ptrResultCPD->points[i].z; 
-
+				pubTrackResultMsg.data[i].x = ptrResultCPD->points[i].x; 
+				pubTrackResultMsg.data[i].y = ptrResultCPD->points[i].y; 
+				pubTrackResultMsg.data[i].z = ptrResultCPD->points[i].z; 
 			}
+			// Publish Registration Result
+			match_result_pub.publish(pubTrackResultMsg);
 
-			post_result_pub.publish(pubTrackingResultMsg);
+			// Generate markers
+//			// Marker: points (CPD result)
+//			visualization_msgs::Marker point_list;
+//			point_list.header.frame_id = "camera_depth_optical_frame";
+//			point_list.header.stamp = ros::Time::now();
+//			point_list.ns = "points";
+//			point_list.action = visualization_msgs::Marker::ADD;
+//			point_list.pose.orientation.w = 1.0;
+//			point_list.id = 0;
+//			point_list.type = visualization_msgs::Marker::POINTS;
+//			point_list.scale.x = 0.006;
+//			point_list.scale.y = 0.006;
+//			point_list.color.g = 1.0;
+//			point_list.color.a = 1.0;
+//
+//			for (size_t i = 0; i < POINTS_PER_ROW * POINTS_PER_COL; i++)
+//			{
+//				geometry_msgs::Point p;
+//				p.x = ptrResultCPD->points[i].x;
+//				p.y = ptrResultCPD->points[i].y;
+//				p.z = ptrResultCPD->points[i].z;
+//				point_list.points.push_back(p);
+//			}
+//			marker_pub_point.publish(point_list);
 
-			// Publish CPD result as marker
-			displayCloud = ptrResultCPD;
-			pcl::toROSMsg(*displayCloud, output);
-			output.header.stamp = ros::Time::now();
-			output.header.frame_id = "camera_rgb_optical_frame";
-			gen_set_pub.publish(output);
-
-			// Generate line markers and publish them
+			// Marker: lines
 			visualization_msgs::Marker line_list;
-			line_list.header.frame_id = "camera_rgb_optical_frame";
+			line_list.header.frame_id = "camera_depth_optical_frame";
 			line_list.header.stamp = ros::Time::now();
-			line_list.ns = "points_and_lines";
+			line_list.ns = "lines";
 			line_list.action = visualization_msgs::Marker::ADD;
 			line_list.pose.orientation.w = 1.0;
-			line_list.id = 2;
+			line_list.id = 1;
 			line_list.type = visualization_msgs::Marker::LINE_LIST;
 			line_list.scale.x = 0.004;
 			line_list.color.r = 1.0;
 			line_list.color.a = 1.0;
-			geometry_msgs::Point p;
 			for (size_t i = 0; i < POINTS_PER_ROW; i++)
 			{
 				for (size_t j = 0; j < (POINTS_PER_COL - 1); j++)
 				{
+					geometry_msgs::Point p;
 					int n = i * POINTS_PER_COL + j;
 					p.x = ptrResultCPD->points[n].x;  
 					p.y = ptrResultCPD->points[n].y;  
@@ -365,6 +371,7 @@ void nappeTrackingPostCallback(const sensor_msgs::PointCloud2ConstPtr & input)
 			{
 				for (size_t j = 0; j < (POINTS_PER_ROW - 1); j++)
 				{
+					geometry_msgs::Point p;
 					int n = i + j * POINTS_PER_COL;
 					p.x = ptrResultCPD->points[n].x;  
 					p.y = ptrResultCPD->points[n].y;  
@@ -378,28 +385,27 @@ void nappeTrackingPostCallback(const sensor_msgs::PointCloud2ConstPtr & input)
 			}
 			marker_pub_line.publish(line_list);
 
-			// Generate text markers and publish them
-			visualization_msgs::Marker text_list;
-			text_list.header.frame_id = "camera_rgb_optical_frame";
-			text_list.header.stamp = ros::Time::now();
-			text_list.ns = "basic_shapes";
-			text_list.action = visualization_msgs::Marker::ADD;
-			//text_list.pose.orientation.w = 1.0;
-			text_list.id = 100;
-			text_list.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
-			text_list.pose.position.x = 0.0;
-			text_list.pose.position.y = 0.0;
-			text_list.pose.position.z = 0.0;
-			text_list.scale.x = 1.0;
-			text_list.scale.y = 1.0;
-			text_list.scale.z = 1.0;
-			text_list.color.r = 1.0;
-			text_list.color.g = 0.0;
-			text_list.color.b = 0.0;
-			text_list.text="bababa";
-			
-			marker_pub_text.publish(text_list);
-
+//			// Marker: texts
+//			visualization_msgs::Marker text_list;
+//			text_list.header.frame_id = "camera_depth_optical_frame";
+//			text_list.header.stamp = ros::Time::now();
+//			text_list.ns = "basic_shapes";
+//			text_list.action = visualization_msgs::Marker::ADD;
+//			text_list.pose.orientation.w = 1.0;
+//			text_list.id = 2;
+//			text_list.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+//			text_list.pose.position.x = 0.0;
+//			text_list.pose.position.y = 0.0;
+//			text_list.pose.position.z = 0.0;
+//			text_list.scale.x = 1.0;
+//			text_list.scale.y = 1.0;
+//			text_list.scale.z = 1.0;
+//			text_list.color.r = 1.0;
+//			text_list.color.g = 0.0;
+//			text_list.color.b = 0.0;
+//			text_list.text="bababa";
+//				
+//			marker_pub_text.publish(text_list);
 		}
 	}
 	else
@@ -409,10 +415,8 @@ void nappeTrackingPostCallback(const sensor_msgs::PointCloud2ConstPtr & input)
 }
 
 /** Process the command from nappe controller. */
-void visionCmdCallback(const nappe_tracking_msgs::TrackingCmd & msg)
+void postConfigCallback(const nappe_tracking_msgs::TrackPostConfig & msg)
 {
-	std::cout << "visionCmdCallback  ..." << std::endl;
-
 	if (msg.cmd == TRACK_START)
 	{
 		std::cout << "Start the vision ..." << std::endl;
@@ -433,7 +437,13 @@ int main(int argc, char * argv[])
 	// Print out system info
 	std::cout << "PCL Version: " << PCL_VERSION << std::endl;
 	std::cout << "CPD Version: " << cpd::version() << std::endl; 
-	std::cout << "Nappe Post-processing ...  " << std::endl;
+	if (COLOR_FILTER_SEL == 1)
+		std::cout << "Color filter: HSV" << std::endl;
+	else if (COLOR_FILTER_SEL == 2)
+		std::cout << "Color filter: RGB" << std::endl;
+	else
+		;
+	std::cout << "Nappe Post-process running ... " << std::endl;
 
 	// Initialize ROS
 	ros::init(argc, argv, "nappe_tracking_post");
@@ -441,13 +451,14 @@ int main(int argc, char * argv[])
 
 	// Create ROS subscriber & publisher 
 	ros::Subscriber tracking_pre_sub = nh.subscribe("/nappe/filter/voxel", 1, nappeTrackingPostCallback);
-	ros::Subscriber controller_sub = nh.subscribe("/nappe/vision_cmd", 1, visionCmdCallback);
+	ros::Subscriber controller_sub = nh.subscribe("/nappe/config/post", 1, postConfigCallback);
 
-	cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/nappe/filter/color", 1);
-	post_result_pub = nh.advertise<nappe_tracking_msgs::TrackingResult>("/nappe/registration", 1);
-  marker_pub_line = nh.advertise<visualization_msgs::Marker>("/nappe/marker/grid", 10);
-  marker_pub_text = nh.advertise<visualization_msgs::Marker>("/nappe/marker/text", 10);
-	gen_set_pub = nh.advertise<sensor_msgs::PointCloud2>("/nappe/marker/result", 1);
+	color_filter_pub = nh.advertise<sensor_msgs::PointCloud2>("/nappe/filter/color", 1);
+	pointset_pub = nh.advertise<sensor_msgs::PointCloud2>("/nappe/pc/pointset", 1);
+	match_result_pub = nh.advertise<nappe_tracking_msgs::TrackResult>("/nappe/controller/registration", 1);
+  marker_pub_line = nh.advertise<visualization_msgs::Marker>("/nappe/marker/lines", 1);
+  //marker_pub_text = nh.advertise<visualization_msgs::Marker>("/nappe/marker/texts", 1);
+	//marker_pub_point = nh.advertise<visualization_msgs::Marker>("/nappe/marker/points", 1);
 
 	// Spin
 	ros::spin();
