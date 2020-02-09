@@ -35,8 +35,7 @@
 #define POINTS_PER_COL 10
 #define ROWS_POINTSET 10
 #define COLS_POINTSET 3
-#define TRACK_START 20
-#define TRACK_FINISH 30
+#define VOXEL_H_MAX 360 
 
 /** 1 - HSV filter
  *  2 - RGB filter */
@@ -51,6 +50,15 @@ ros::Publisher marker_pub_line;
 
 int cntRun = 0;
 bool trackRun = false;
+
+double voxel_ts_H_l1 = 0.0;
+double voxel_ts_H_h1 = 0.0;
+double voxel_ts_H_l2 = 0.0;
+double voxel_ts_H_h2 = 0.0;
+double voxel_ts_S_l1 = 0.0;
+double voxel_ts_S_h1 = 0.0;
+double voxel_ts_V_l1 = 0.0;
+double voxel_ts_V_h1 = 0.0;
 
 /** HSV - Color based filter. */
 pcl::PointCloud<pcl::PointXYZRGB> * colorHSV_filter(pcl::PointCloud<pcl::PointXYZRGB> & cloud)
@@ -68,15 +76,9 @@ pcl::PointCloud<pcl::PointXYZRGB> * colorHSV_filter(pcl::PointCloud<pcl::PointXY
 		p.z = cloud.points[i].z;
 		if (OUTPUT_DEBUG_INFO == true)
 			std::cout << "HSV: h=" << p.h << "; s=" << p.s << "; v=" << p.v << std::endl;
-		// nappe in bobbin
-		//if (((0 <= p.h && p.h <= 30) || (320 <= p.h && p.h <= 360)) &&
-					//(0.45 <= p.s && p.s <= 0.99) &&
-						//(0.23 <= p.v && p.v <= 0.4))
-		// nappe pick up
-		if (((0 <= p.h && p.h <= 30) || (320 <= p.h && p.h <= 360)) &&
-					(0.5 <= p.s && p.s <= 1.0) &&
-						(0.08 <= p.v && p.v <= 0.45))
-		//if (0 <= p.h && p.h <= 20)
+		if (((voxel_ts_H_l1*VOXEL_H_MAX <= p.h && p.h <= voxel_ts_H_h1*VOXEL_H_MAX) || (voxel_ts_H_l2*VOXEL_H_MAX <= p.h && p.h <= voxel_ts_H_h2*VOXEL_H_MAX)) &&
+					(voxel_ts_S_l1 <= p.s && p.s <= voxel_ts_S_h1) &&
+						(voxel_ts_V_l1 <= p.v && p.v <= voxel_ts_V_h1))
 		{
 			ptrCloudHSV->push_back(p);
 		}
@@ -386,6 +388,15 @@ void nappeTrackingPostCallback(const sensor_msgs::PointCloud2ConstPtr & msg)
 /** Process the command from nappe controller. */
 void postConfigCallback(const nappe_tracking_msgs::TrackPostConfig & msg)
 {
+	voxel_ts_H_l1 = msg.voxel_ts_H_l1;
+	voxel_ts_H_h1 = msg.voxel_ts_H_h1;
+	voxel_ts_H_l2 = msg.voxel_ts_H_l2;
+	voxel_ts_H_h2 = msg.voxel_ts_H_h2;
+	voxel_ts_S_l1 = msg.voxel_ts_S_l1;
+	voxel_ts_S_h1 = msg.voxel_ts_S_h1;
+	voxel_ts_V_l1 = msg.voxel_ts_V_l1;
+	voxel_ts_V_h1 = msg.voxel_ts_V_h1;
+
 	if (msg.track_cmd == "Start")
 	{
 		std::cout << "Start tracking ..." << std::endl;
