@@ -50,15 +50,21 @@ ros::Publisher marker_pub_line;
 
 int cntRun = 0;
 bool trackRun = false;
-
-double voxel_ts_H_l1 = 0.0;
-double voxel_ts_H_h1 = 0.0;
-double voxel_ts_H_l2 = 0.0;
-double voxel_ts_H_h2 = 0.0;
-double voxel_ts_S_l1 = 0.0;
-double voxel_ts_S_h1 = 0.0;
-double voxel_ts_V_l1 = 0.0;
-double voxel_ts_V_h1 = 0.0;
+std::string color_filter_sel = "";
+double HSV_ts_H_l1 = 0.0;
+double HSV_ts_H_h1 = 0.0;
+double HSV_ts_H_l2 = 0.0;
+double HSV_ts_H_h2 = 0.0;
+double HSV_ts_S_l1 = 0.0;
+double HSV_ts_S_h1 = 0.0;
+double HSV_ts_V_l1 = 0.0;
+double HSV_ts_V_h1 = 0.0;
+double RGB_ts_R_l1 = 0.0;
+double RGB_ts_R_h1 = 0.0;
+double RGB_ts_G_l1 = 0.0;
+double RGB_ts_G_h1 = 0.0;
+double RGB_ts_B_l1 = 0.0;
+double RGB_ts_B_h1 = 0.0;
 
 /** HSV - Color based filter. */
 pcl::PointCloud<pcl::PointXYZRGB> * colorHSV_filter(pcl::PointCloud<pcl::PointXYZRGB> & cloud)
@@ -76,9 +82,9 @@ pcl::PointCloud<pcl::PointXYZRGB> * colorHSV_filter(pcl::PointCloud<pcl::PointXY
 		p.z = cloud.points[i].z;
 		if (OUTPUT_DEBUG_INFO == true)
 			std::cout << "HSV: h=" << p.h << "; s=" << p.s << "; v=" << p.v << std::endl;
-		if (((voxel_ts_H_l1*VOXEL_H_MAX <= p.h && p.h <= voxel_ts_H_h1*VOXEL_H_MAX) || (voxel_ts_H_l2*VOXEL_H_MAX <= p.h && p.h <= voxel_ts_H_h2*VOXEL_H_MAX)) &&
-					(voxel_ts_S_l1 <= p.s && p.s <= voxel_ts_S_h1) &&
-						(voxel_ts_V_l1 <= p.v && p.v <= voxel_ts_V_h1))
+		if (((HSV_ts_H_l1*VOXEL_H_MAX <= p.h && p.h <= HSV_ts_H_h1*VOXEL_H_MAX) || (HSV_ts_H_l2*VOXEL_H_MAX <= p.h && p.h <= HSV_ts_H_h2*VOXEL_H_MAX)) &&
+					(HSV_ts_S_l1 <= p.s && p.s <= HSV_ts_S_h1) &&
+						(HSV_ts_V_l1 <= p.v && p.v <= HSV_ts_V_h1))
 		{
 			ptrCloudHSV->push_back(p);
 		}
@@ -113,14 +119,9 @@ pcl::PointCloud<pcl::PointXYZRGB> * colorRGB_filter(pcl::PointCloud<pcl::PointXY
 
 	for (size_t i = 0; i < cloud.size(); i++)
 	{
-		// For cable
-		//if cloud.points[i].r < 80 && cloud.points[i].g < 80 && cloud.points[i].b > 120)
-		// For paper
-		//if (cloud.points[i].r < 40 && cloud.points[i].g < 40 && cloud.points[i].b > 60)
-		// For nappe
-		if ((100 <= cloud.points[i].r && cloud.points[i].r <= 255) &&
-					(0 <= cloud.points[i].g && cloud.points[i].g <= 100) && 
-						(0 <= cloud.points[i].b && cloud.points[i].b <= 100))
+		if ((RGB_ts_R_l1 <= cloud.points[i].r && cloud.points[i].r <= RGB_ts_R_h1) &&
+					(RGB_ts_G_l1 <= cloud.points[i].g && cloud.points[i].g <= RGB_ts_G_h1) && 
+						(RGB_ts_B_l1 <= cloud.points[i].b && cloud.points[i].b <= RGB_ts_B_h1))
 		{
 			ptrColorFilter->push_back(cloud.points[i]);
 			count++;
@@ -336,12 +337,12 @@ void nappeTrackingPostCallback(const sensor_msgs::PointCloud2ConstPtr & msg)
 
 			// Color filter
 			pcl::PointCloud<pcl::PointXYZRGB> * ptrColorFilter = new (pcl::PointCloud<pcl::PointXYZRGB>);
-			switch (COLOR_FILTER_SEL)
-			{
-				case 1:	ptrColorFilter = colorHSV_filter(*ptrCloudRGB); break;
-				case 2: ptrColorFilter = colorRGB_filter(*ptrCloudRGB); break;
-				default: break;
-			}
+			if (color_filter_sel == "HSV")
+				ptrColorFilter = colorHSV_filter(*ptrCloudRGB);
+			else if (color_filter_sel == "RGB")
+				ptrColorFilter = colorRGB_filter(*ptrCloudRGB);
+			else
+				;
 
 			// pcl::PCLPointCloud2 -> pcl::PointCloud<T>
 			sensor_msgs::PointCloud2 output;
@@ -388,17 +389,25 @@ void nappeTrackingPostCallback(const sensor_msgs::PointCloud2ConstPtr & msg)
 /** Process the command from nappe controller. */
 void postConfigCallback(const nappe_tracking_msgs::TrackPostConfig & msg)
 {
-	voxel_ts_H_l1 = msg.voxel_ts_H_l1;
-	voxel_ts_H_h1 = msg.voxel_ts_H_h1;
-	voxel_ts_H_l2 = msg.voxel_ts_H_l2;
-	voxel_ts_H_h2 = msg.voxel_ts_H_h2;
-	voxel_ts_S_l1 = msg.voxel_ts_S_l1;
-	voxel_ts_S_h1 = msg.voxel_ts_S_h1;
-	voxel_ts_V_l1 = msg.voxel_ts_V_l1;
-	voxel_ts_V_h1 = msg.voxel_ts_V_h1;
+	color_filter_sel = msg.color_filter_sel;
+	HSV_ts_H_l1 = msg.HSV_ts_H_l1;
+	HSV_ts_H_h1 = msg.HSV_ts_H_h1;
+	HSV_ts_H_l2 = msg.HSV_ts_H_l2;
+	HSV_ts_H_h2 = msg.HSV_ts_H_h2;
+	HSV_ts_S_l1 = msg.HSV_ts_S_l1;
+	HSV_ts_S_h1 = msg.HSV_ts_S_h1;
+	HSV_ts_V_l1 = msg.HSV_ts_V_l1;
+	HSV_ts_V_h1 = msg.HSV_ts_V_h1;
+	RGB_ts_R_l1 = msg.RGB_ts_R_l1;
+	RGB_ts_R_h1 = msg.RGB_ts_R_h1;
+	RGB_ts_G_l1 = msg.RGB_ts_G_l1;
+	RGB_ts_G_h1 = msg.RGB_ts_G_h1;
+	RGB_ts_B_l1 = msg.RGB_ts_B_l1;
+	RGB_ts_B_h1 = msg.RGB_ts_B_h1;
 
 	if (msg.track_cmd == "Start")
 	{
+		std::cout << "Color filter: " << msg.color_filter_sel << std::endl;
 		std::cout << "Start tracking ..." << std::endl;
 		trackRun = true;
 	}
@@ -417,12 +426,6 @@ int main(int argc, char * argv[])
 	// Print out system info
 	std::cout << "PCL Version: " << PCL_VERSION << std::endl;
 	std::cout << "CPD Version: " << cpd::version() << std::endl; 
-	if (COLOR_FILTER_SEL == 1)
-		std::cout << "Color filter: HSV" << std::endl;
-	else if (COLOR_FILTER_SEL == 2)
-		std::cout << "Color filter: RGB" << std::endl;
-	else
-		;
 	std::cout << "Nappe Post-process running ... " << std::endl;
 
 	// Initialize ROS
