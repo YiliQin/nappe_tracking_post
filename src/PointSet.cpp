@@ -27,16 +27,35 @@ namespace gen_point_set
 			//gen_pointset(i, 2) = (u / 10);
 		//}
 
-		// Genreate a plane
-    for (size_t i = 0; i < p_num_row_; i++)
-    {
-      for (size_t j = 0; j < p_num_col_; j++)
-      {
-        pointSet(i * p_num_col_ + j, 0) = 0.05 * i;
-        pointSet(i * p_num_col_ + j, 1) = ((double)(j))/p_num_col_;
-        pointSet(i * p_num_col_ + j, 2) = 0.0;
-      } 
-    }
+		//// Genreate a plane
+    //for (size_t i = 0; i < p_num_row_; i++)
+    //{
+      //for (size_t j = 0; j < p_num_col_; j++)
+      //{
+        //pointSet(i * p_num_col_ + j, 0) = 0.05 * i;
+        //pointSet(i * p_num_col_ + j, 1) = ((double)(j))/p_num_col_;
+        //pointSet(i * p_num_col_ + j, 2) = 0.0;
+      //} 
+    //}
+
+		for (size_t i = 0; i < p_num_col_; i++)
+		{
+			pointSet(i, 0) = 0.05 * i;		
+			pointSet(i, 1) = 0.0 ;		
+			pointSet(i, 2) = 0.0;		
+		}
+		for (size_t i = 0; i < p_num_col_; i++)
+		{
+			pointSet(p_num_col_ + i, 0) = 0.05 * i;	
+			pointSet(p_num_col_ + i, 1) = pointSet(i, 1) - 0.05;		
+			pointSet(p_num_col_ + i, 2) = 0.0;		
+		} 
+		for (size_t i = 0; i < p_num_col_; i++)
+		{
+			pointSet(2*p_num_col_ + i, 0) = 0.05 * i;		
+			pointSet(2*p_num_col_ + i, 1) = pointSet(i, 1) - 2*0.05;	
+			pointSet(2*p_num_col_ + i, 2) = 0.0;		
+		} 
   } 
 
   Eigen::Vector3d PointSet::get_point()
